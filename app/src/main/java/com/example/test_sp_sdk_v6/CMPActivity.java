@@ -1,6 +1,7 @@
 package com.example.test_sp_sdk_v6;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
@@ -38,6 +39,10 @@ public class CMPActivity extends Activity {
     // Shallow copy to the RNCMP singleton
     private RNCMP mCMP = null;
 
+    // We only need to call SP SDK in the first onResume(). Any subsequent onResume() (maybe due to background->foreground)
+    // will NOT trigger calling to SP SDK any more
+    private boolean mIsFirstOnResume = true;
+
     // View hierearchy
     //  private ViewGroup mMainViewGroup = null;
     private View mSpinner = null;
@@ -47,16 +52,16 @@ public class CMPActivity extends Activity {
     private boolean mOnStaging = false;
     private String mCmd = null;
 
-    // User can use Android BACK button to quit Msg or PM screen. In that case, we will
+    // User can use Android HW BACK button to quit Msg or PM screen. In that case, we will
     // not get any callback from SourcePoint SDK. Just Android onPause()/onDestroy().
     // So we have to handle it by checking if the onDestroy() is due to BACK
-    private boolean mVoluntaryLeaving = false;
+    private boolean mUserBacksOut = true;
 
     // New SDK 6.x
     private SpConfig mSpConfig = null;
     private SpConsentLib mSpConsentLib = null;
-    private static final String sGdprPMId = "220710";
-    private static final String sCcpaPMId = "553173";
+    private static final String sGdprPMId = "562984"; //"220710";
+    private static final String sCcpaPMId = "576219"; //"553173";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -77,25 +82,30 @@ public class CMPActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (CMD_LOAD_GDPR_PRIVACY_MANAGER.equalsIgnoreCase(mCmd)) {
-            mSpConsentLib.loadPrivacyManager(sGdprPMId, PMTab.DEFAULT, CampaignType.GDPR);
-            Log.d("sp-test", "loadPrivacyManager GDPR");
-        } else if (CMD_LOAD_CCPA_PRIVACY_MANAGER.equalsIgnoreCase(mCmd)) {
-            mSpConsentLib.loadPrivacyManager(sCcpaPMId, PMTab.DEFAULT, CampaignType.CCPA);
-            Log.d("sp-test", "loadPrivacyManager CCPA");
-        } else if (mAuthId != null) {
-            mSpConsentLib.loadMessage(mAuthId);
-        } else {
-            mSpConsentLib.loadMessage();
-            Log.d("sp-test", "loadMessage");
+        if (mIsFirstOnResume) {
+            mIsFirstOnResume = false;
+            if (CMD_LOAD_GDPR_PRIVACY_MANAGER.equalsIgnoreCase(mCmd)) {
+                mSpConsentLib.loadPrivacyManager(sGdprPMId, PMTab.DEFAULT, CampaignType.GDPR);
+                Log.d("sp-test", "loadPrivacyManager GDPR");
+            } else if (CMD_LOAD_CCPA_PRIVACY_MANAGER.equalsIgnoreCase(mCmd)) {
+                mSpConsentLib.loadPrivacyManager(sCcpaPMId, PMTab.DEFAULT, CampaignType.CCPA);
+                Log.d("sp-test", "loadPrivacyManager CCPA");
+            } else if (mAuthId != null) {
+                mSpConsentLib.loadMessage(mAuthId);
+            } else {
+                mSpConsentLib.loadMessage();
+                Log.d("sp-test", "loadMessage");
+            }
         }
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (!mVoluntaryLeaving) {
-            // User must kill the Activity by BACK button
+        if (mUserBacksOut) {
+            // It can only be set to false either onConsentReady() or onError().
+            // So if it is still true, it means user backs out by either Android HW BACK key
+            // or the BACK button in PrivacyManager screen
             if (mCMP != null) {
                 mCMP.onUserBackOut();
             }
@@ -128,8 +138,11 @@ public class CMPActivity extends Activity {
             if (mCMP != null) {
                 mCMP.onError(error);
             }
-            mVoluntaryLeaving = true;
-            finish(); // Close current Activity
+            mUserBacksOut = false;
+
+            // When error occurs, SP SDK will not call onSpFinished(). So we need to
+            // finish the SP hosting Activity here
+            CMPActivity.this.finish();
         }
 
         @Override
@@ -138,16 +151,25 @@ public class CMPActivity extends Activity {
             if (mCMP != null) {
                 mCMP.onConsentReady(consent);
             }
-            mVoluntaryLeaving = true;
-
-            // first usage
-            getSharedPreferences("my_pref", MODE_PRIVATE).edit().putBoolean("rn-consent-first-usage", false).apply();
+            mUserBacksOut = false;
 
             // FIXME: This is just a hack in this POC to figure out which PrivacyManager
             // we need to invoke when calling loadPrivacyManager(): GDPR or CCPA
-            ((TestApplication) getApplication()).mSubjectToGDPR = (((Integer) (consent.getGdpr().getConsent().getTcData().get("IABTCF_gdprApplies"))).intValue() == 1);
+            if (consent.getGdpr() != null) {
+                ((TestApplication) getApplication()).mSubjectToGDPR = (((Integer) (consent.getGdpr().getConsent().getTcData().get("IABTCF_gdprApplies"))).intValue() == 1);
+            }
+        }
 
-            finish(); // Close current Activity
+        @Override
+        public void onSpFinished(SPConsents consent) {
+            Log.d("sp-test", "onSpFinished");
+
+            // We get this callback when:
+            // 1) After onConsentReady() is called
+            // 2) When user clicks on the BACK button in PrivacyManager screen
+            // (Note: this will NOT be called if onError() occurs)
+            // So it is a good place to finish the SP hosting Activity here
+            CMPActivity.this.finish();
         }
 
         @NotNull
@@ -185,95 +207,4 @@ public class CMPActivity extends Activity {
             }
         }
     }
-
-    // No need for this in 6.x where we use a LocalClient class
-    // private GDPRConsentLib buildGDPRConsentLib() {
-    //   ConsentLibBuilder builder =
-    //       CMPLibHelper.createBasicBuilder(mAuthId, mOnStaging, this)
-    //           .setOnConsentUIReady(
-    //               view -> {
-    //                 showView(view);
-    //                 if (mCMP != null) {
-    //                   mCMP.onConsentUIReady();
-    //                 }
-    //               })
-    //           .setOnConsentUIFinished(
-    //               view -> {
-    //                 removeView(view);
-    //                 if (mCMP != null) {
-    //                   mCMP.onConsentUIFinished();
-    //                 }
-    //               })
-    //           .setOnMessageReady(
-    //               () -> {
-    //                 if (mCMP != null) {
-    //                   mCMP.onMessageWillShow();
-    //                 }
-    //               })
-    //           .setOnMessageFinished(
-    //               () -> {
-    //                 if (mCMP != null) {
-    //                   mCMP.onMessageDidDisappear();
-    //                 }
-    //               })
-    //           .setOnPMReady(
-    //               () -> {
-    //                 if (mCMP != null) {
-    //                   mCMP.onPmWillShow();
-    //                 }
-    //               })
-    //           .setOnPMFinished(
-    //               () -> {
-    //                 if (mCMP != null) {
-    //                   mCMP.onPmDidDisappear();
-    //                 }
-    //               })
-    //           .setMessageTimeOut(20000L)
-    //           .setOnAction(
-    //               actionType -> {
-    //                 if (mCMP != null) {
-    //                   mCMP.onAction(actionType);
-    //                 }
-    //               })
-    //           .setOnConsentReady(
-    //               consent -> {
-    //                 if (mCMP != null) {
-    //                   mCMP.onConsentReady(consent);
-    //                 }
-    //                 mVoluntaryLeaving = true;
-    //                 finish(); // Close current Activity
-    //               })
-    //           .setOnError(
-    //               error -> {
-    //                 Log.e(TAG, "Something went wrong: ", error);
-    //                 if (mCMP != null) {
-    //                   mCMP.onError(error);
-    //                 }
-    //                 mVoluntaryLeaving = true;
-    //                 finish(); // Close current Activity
-    //               });
-    //
-    //   return builder.build();
-    // }
-
-    // Not needed for 6.x
-    // private void showView(View view) {
-    //   if (view.getParent() == null) {
-    //     view.setLayoutParams(new ViewGroup.LayoutParams(0, 0));
-    //     view.getLayoutParams().height = ViewGroup.LayoutParams.MATCH_PARENT;
-    //     view.getLayoutParams().width = ViewGroup.LayoutParams.MATCH_PARENT;
-    //     view.bringToFront();
-    //     view.requestLayout();
-    //     mMainViewGroup.addView(view);
-    //     if (mSpinner != null) {
-    //       mSpinner.setVisibility(View.GONE);
-    //     }
-    //   }
-    // }
-
-    // private void removeView(View view) {
-    //   if (view.getParent() != null) {
-    //     mMainViewGroup.removeView(view);
-    //   }
-    // }
 }

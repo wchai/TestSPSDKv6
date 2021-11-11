@@ -14,6 +14,8 @@ import android.view.MenuItem;
 
 public class MainActivity extends AppCompatActivity {
 
+    private boolean mIsFirstResume = true;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -41,9 +43,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        Boolean mIsFirstResume = getSharedPreferences("my_pref", MODE_PRIVATE).getBoolean("rn-consent-first-usage", true);
+        // Boolean mIsFirstResume = getSharedPreferences("my_pref", MODE_PRIVATE).getBoolean("rn-consent-first-usage", true);
         if (mIsFirstResume) {
-            // Call CMP.loadMessage() during app launch
+            // Call CMP.loadMessage() during app launch just once.
+            mIsFirstResume = false;
             RNCMP cmp = RNCMP.getInstance(getApplicationContext());
             cmp.loadMessage(null, true, new Promise());
         }
