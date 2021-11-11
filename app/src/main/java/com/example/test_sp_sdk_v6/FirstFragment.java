@@ -1,5 +1,6 @@
 package com.example.test_sp_sdk_v6;
 
+import android.content.Context;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -28,6 +29,12 @@ public class FirstFragment extends Fragment {
     public void onViewCreated(@NonNull @NotNull View view, @Nullable @org.jetbrains.annotations.Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         Button btn = view.findViewById(R.id.button_first);
-        btn.setOnClickListener(v -> SpUtils.clearAllData(getContext()));
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                SpUtils.clearAllData(getContext());
+                getContext().getSharedPreferences("my_pref", Context.MODE_PRIVATE).edit().putBoolean("rn-consent-first-usage", true).apply();
+            }
+        });
     }
 }
