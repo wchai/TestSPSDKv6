@@ -6,15 +6,19 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 
+import com.sourcepoint.cmplibrary.NativeMessageController;
 import com.sourcepoint.cmplibrary.SpClient;
 import com.sourcepoint.cmplibrary.SpConsentLib;
+import com.sourcepoint.cmplibrary.core.nativemessage.MessageStructure;
 import com.sourcepoint.cmplibrary.creation.FactoryKt;
 import com.sourcepoint.cmplibrary.exception.CampaignType;
+import com.sourcepoint.cmplibrary.model.ConsentAction;
 import com.sourcepoint.cmplibrary.model.PMTab;
 import com.sourcepoint.cmplibrary.model.exposed.ActionType;
 import com.sourcepoint.cmplibrary.model.exposed.SPConsents;
 import com.sourcepoint.cmplibrary.model.exposed.SpConfig;
 
+import org.jetbrains.annotations.NotNull;
 import org.json.JSONObject;
 
 public class CMPActivity extends Activity {
@@ -144,11 +148,18 @@ public class CMPActivity extends Activity {
       finish(); // Close current Activity
     }
 
+    @NotNull
     @Override
-    public void onAction(View view, ActionType actionType) {
+    public ConsentAction onAction(@NotNull View view, @NotNull ConsentAction consentAction) {
       if (mCMP != null) {
-        mCMP.onAction(actionType);
+        mCMP.onAction(consentAction.getActionType());
       }
+      return consentAction;
+    }
+
+    @Override
+    public void onNativeMessageReady(@NotNull MessageStructure messageStructure, @NotNull NativeMessageController nativeMessageController) {
+
     }
 
     @Override

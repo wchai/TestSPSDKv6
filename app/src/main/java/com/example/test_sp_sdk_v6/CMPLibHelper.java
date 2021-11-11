@@ -18,7 +18,7 @@ public class CMPLibHelper {
 
   // Credentials from SourcePoint
   private static final Integer nAccountId = 1425;
-  private static final String sProperty = "bloomberg.android";
+  private static final String sProperty = "bloombergv6.android";
 
   // New way with 6.x is to create SpConfig
   static SpConfig createSpConfig(boolean onStaging) {
